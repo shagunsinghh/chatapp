@@ -155,7 +155,6 @@ button.active:hover {
   transition: background-color 0.2s, color 0.2s;
 }
 
-
 .message-actions .like-button.liked {
   background-color: #4caf50;
   color: white;
@@ -266,6 +265,23 @@ form input[type="submit"] {
 .chat-title {
   margin: 0;
   font-size: 1.2rem;
+}
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.bounce {
+  animation: bounce 1s infinite;
+}
+
+.bounce-on-hover:hover {
+  animation: bounce 0.6s;
 }
 
 .chat-recipient {

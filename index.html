@@ -21,7 +21,11 @@
     <div id="app">
       <h1>ChatRoom</h1>
 
-      <button v-if="!$graffitiSession.value" @click="$graffiti.login()">
+      <button
+        v-if="!$graffitiSession.value"
+        @click="$graffiti.login()"
+        class="bounce"
+      >
         Log In
       </button>
       <template v-else>
@@ -405,13 +409,26 @@
                   <div class="message-content">{{ obj.value.content }}</div>
                   <div class="message-actions">
                     <template v-if="obj.actor===$graffitiSession.value.actor">
-                      <button @click="editMessage(obj)">Edit</button>
-                      <button @click="deleteMessage(obj)">Delete</button>
+                      <button @click="editMessage(obj)" class="bounce-on-hover">
+                        Edit
+                      </button>
+                      <button
+                        @click="deleteMessage(obj)"
+                        class="bounce-on-hover"
+                      >
+                        Delete
+                      </button>
                       <button
                         @click="togglePinMessage(obj,$graffitiSession.value)"
-                        class="pin-button"
+                        class="pin-button bounce-on-hover"
                       >
-                        {{ obj.value.pinned?'Unpin':'Pin' }}
+                        {{ obj.value.pinned ? 'Unpin' : 'Pin' }}
+                      </button>
+                      <button
+                        @click="toggleLikeMessage(obj,$graffitiSession.value)"
+                        :class="['like-button bounce-on-hover', { liked: obj.value.liked }]"
+                      >
+                        {{ obj.value.liked ? 'Unlike' : 'Like' }}
                       </button>
                     </template>
 
@@ -423,12 +440,6 @@
                         {{ obj.value.pinned?'Unpin':'Pin' }}
                       </button>
                     </template>
-                    <button
-                      @click="toggleLikeMessage(obj,$graffitiSession.value)"
-                      :class="['like-button', { liked: obj.value.liked }]"
-                    >
-                      {{ obj.value.liked ? 'Unlike' : 'Like' }}
-                    </button>
                   </div>
                 </li>
               </ul>
