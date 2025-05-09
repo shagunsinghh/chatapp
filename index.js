@@ -10,6 +10,7 @@ import { GraffitiObjectToFile } from "@graffiti-garden/wrapper-files/vue";
 createApp({
   data() {
     return {
+      pinnedSearchQuery: "",
       myMessage: "",
       sending: false,
       chatType: "group",
@@ -151,11 +152,7 @@ createApp({
       this.pinnedMess = {};
       this.joinedGroupChats = [];
 
-      if (
-        confirm(
-          "Do you want to log out?"
-        )
-      ) {
+      if (confirm("Do you want to log out?")) {
         const localImpl = this.$graffiti.graffiti;
         if (localImpl.clear) {
           localImpl.clear();
@@ -170,8 +167,6 @@ createApp({
         }
       }
     },
-
-   
 
     resetProfileState() {
       this.myProfile = null;
@@ -469,6 +464,19 @@ createApp({
       }
 
       this.activeChatName = this.rename.trim();
+      this.$nextTick(() => {
+        const recipientEl = document.querySelector(".chat-recipient");
+        if (recipientEl) {
+          recipientEl.classList.remove("bounce-once"); // reset if already there
+          void recipientEl.offsetWidth; // trigger reflow to restart animation
+          recipientEl.classList.add("bounce-once");
+
+          // optional: remove the class after animation ends
+          setTimeout(() => {
+            recipientEl.classList.remove("bounce-once");
+          }, 600);
+        }
+      });
       this.rename = "";
       this.saveConversationHistory();
     },
