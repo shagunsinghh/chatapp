@@ -10,14 +10,17 @@ import { GraffitiObjectToFile } from "@graffiti-garden/wrapper-files/vue";
 createApp({
   data() {
     return {
+      userToAdd: "",
       pinnedSearchQuery: "",
       myMessage: "",
       sending: false,
       chatType: "group",
       activeChannel: null,
+      groupChatObjects: [],
       activeChatName: "",
       dmhis: [],
       activeSender: null,
+      activeGroupObjects: [],
       last: {},
       pinnedMess: {},
       showPinned: false,
@@ -128,6 +131,8 @@ createApp({
     async doLogout() {
       const session = this.$graffitiSession.value;
       if (!session) return;
+      this.activeChannel = null;
+      this.activeChatName = "";
 
       const userId = session.actor;
 
@@ -378,7 +383,127 @@ createApp({
         this.profileObjects.push({ value: this.privateProfile });
       }
     },
+    async addUserToGroup(session) {
+      if (!this.userToAdd.trim()) {
+        alert("Enter a valid user ID to add");
+        return;
+      }
 
+      // Use our helper method to find the active group
+      let targetGroup = this.getActiveGroupObject();
+
+      // If not found through refs, do a direct discovery
+      if (!targetGroup) {
+        try {
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              reject(new Error("Timeout searching for group"));
+            }, 5000);
+
+            this.$graffiti.discover({
+              channels: ["designftw"],
+              schema: {
+                properties: {
+                  value: {
+                    required: ["activity", "object"],
+                    properties: {
+                      activity: { const: "Create" },
+                      object: {
+                        required: ["type", "channel"],
+                        properties: {
+                          type: { const: "Group Chat" },
+                          channel: { type: "string" },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+              callback: (objects) => {
+                clearTimeout(timeout);
+                targetGroup = objects.find(
+                  (o) => o.value.object.channel === this.activeChannel
+                );
+                resolve();
+              },
+            });
+          });
+        } catch (error) {
+          console.error("Error discovering group:", error);
+        }
+      }
+
+      if (!targetGroup) {
+        alert(
+          "Could not find the group to update. Please try refreshing the page."
+        );
+        return;
+      }
+
+      const existingMembers = targetGroup.value.object.members || [];
+      if (existingMembers.includes(this.userToAdd.trim())) {
+        alert(`${this.userToAdd.trim()} is already a member of this group.`);
+        return;
+      }
+
+      try {
+        // Now we have the group object, we can update it
+        await this.$graffiti.patch(
+          {
+            value: [
+              {
+                op: "add",
+                path: "/object/members/-",
+                value: this.userToAdd.trim(),
+              },
+            ],
+          },
+          targetGroup,
+          session
+        );
+
+        // Create a new copy of the target group with the updated members
+        const updatedTargetGroup = JSON.parse(JSON.stringify(targetGroup));
+        if (!updatedTargetGroup.value.object.members) {
+          updatedTargetGroup.value.object.members = [];
+        }
+        updatedTargetGroup.value.object.members.push(this.userToAdd.trim());
+
+        // Create a new array with the updated object
+        this.activeGroupObjects = this.activeGroupObjects.map((obj) =>
+          obj.url === updatedTargetGroup.url ? updatedTargetGroup : obj
+        );
+
+        // If it wasn't in the array yet, add it
+        if (
+          !this.activeGroupObjects.some(
+            (obj) => obj.url === updatedTargetGroup.url
+          )
+        ) {
+          this.activeGroupObjects.push(updatedTargetGroup);
+        }
+
+        alert(`Successfully added ${this.userToAdd.trim()} to the group`);
+        this.userToAdd = "";
+      } catch (error) {
+        console.error("Error adding user to group:", error);
+        alert(`Failed to add user: ${error.message}`);
+      }
+    },
+    getActiveGroupObject() {
+      if (this.activeGroupObjects && this.activeGroupObjects.length > 0) {
+        return this.activeGroupObjects.find(
+          (o) => o.value.object.channel === this.activeChannel
+        );
+      }
+      // fallback
+      if (this.$refs.groupChatsDiscover?.objects) {
+        return this.$refs.groupChatsDiscover.objects.find(
+          (o) => o.value.object.channel === this.activeChannel
+        );
+      }
+      return null;
+    },
     async createGroupChat(session) {
       if (!this.group.trim()) {
         alert("Please enter group chat name");
@@ -395,6 +520,7 @@ createApp({
               type: "Group Chat",
               name: this.group.trim(),
               channel,
+              members: [session.actor],
             },
           },
           channels: ["designftw"],
@@ -411,24 +537,45 @@ createApp({
       this.group = "";
     },
 
-    joinGroupChat(object) {
+    async joinGroupChat(object) {
+      const members = object.value.object.members || [];
+      const userId = this.$graffitiSession.value?.actor;
+
+      if (!members.includes(userId)) {
+        alert("You are not a member of this group.");
+        return;
+      }
+
       this.activeChannel = object.value.object.channel;
-
-      const renamed = this.renameObjects.find(
-        (r) => r.value.describes === this.activeChannel
-      );
-
-      this.activeChatName = renamed
-        ? renamed.value.name
-        : object.value.object.name;
+      this.activeChatName =
+        this.renameObjects.find((r) => r.value.describes === this.activeChannel)
+          ?.value.name || object.value.object.name;
 
       this.chatType = "group";
       this.showPinned = false;
+
+      // Add this explicit update to make sure activeGroupObjects includes this group
+      if (
+        !this.activeGroupObjects.some(
+          (o) => o.value.object.channel === this.activeChannel
+        )
+      ) {
+        this.activeGroupObjects.push(object);
+        console.log("Added object to activeGroupObjects:", object);
+      }
 
       if (!this.joinedGroupChats.includes(this.activeChannel)) {
         this.joinedGroupChats.push(this.activeChannel);
         this.saveConversationHistory();
       }
+
+      // Force a check on the condition for showing forms
+      console.log(
+        "Group object check after joining:",
+        this.groupChatObjects.some(
+          (o) => o.value.object.channel === this.activeChannel
+        )
+      );
     },
 
     async renameGroupChat(session) {
@@ -494,11 +641,9 @@ createApp({
 
       if (this.chatType === "direct") {
         payload.sender = session.actor;
+        const dmChannel = [session.actor, this.activeChannel].sort().join("--");
 
-        if (
-          this.activeChannel !== session.actor &&
-          !this.dmhis.includes(this.activeChannel)
-        ) {
+        if (!this.dmhis.includes(this.activeChannel)) {
           this.dmhis.push(this.activeChannel);
         }
 
@@ -508,10 +653,41 @@ createApp({
         };
 
         this.saveConversationHistory();
+
+        // Add allowed field to permit the recipient to pin/like
+        await this.$graffiti.put(
+          {
+            value: payload,
+            channels: [dmChannel],
+            // For direct messages, allow the recipient to modify
+            allowed:
+              this.chatType === "direct" ? [this.activeChannel] : undefined,
+            // Only allow specific operations on these paths
+            allowedOperations: ["replace:/pinned", "replace:/liked"],
+          },
+          session
+        );
+
+        this.sending = false;
+        this.myMessage = "";
+        await this.$nextTick();
+        this.$refs.messageInput?.focus();
+        return;
       }
 
+      // For group messages, allow all group members to pin/like
+      const groupObj = this.getActiveGroupObject();
+      const groupMembers = groupObj?.value?.object?.members || [];
+
       await this.$graffiti.put(
-        { value: payload, channels: [this.activeChannel] },
+        {
+          value: payload,
+          channels: [this.activeChannel],
+          // For group messages, allow all members to modify
+          allowed: groupMembers.length > 0 ? groupMembers : undefined,
+          // Only allow specific operations on these paths
+          allowedOperations: ["replace:/pinned", "replace:/liked"],
+        },
         session
       );
 
@@ -918,12 +1094,9 @@ createApp({
 
     this.$watch(
       () => this.$refs.groupChatsDiscover?.objects,
-      function (groupChatObjects) {
-        if (
-          groupChatObjects &&
-          this.joinedGroupChats &&
-          this.joinedGroupChats.length > 0
-        ) {
+      function (newObjects) {
+        if (newObjects) {
+          this.groupChatObjects = newObjects;
         }
       }
     );

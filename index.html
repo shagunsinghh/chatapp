@@ -171,7 +171,10 @@
             >
               <div v-if="isInitialPolling">Loading...</div>
               <ul v-else>
-                <li v-for="obj of groupChatObjects" :key="obj.url">
+                <li
+                  v-for="obj of groupChatObjects.filter(g => (g.value.object.members || []).includes($graffitiSession.value.actor))"
+                  :key="obj.url"
+                >
                   <button
                     @click="joinGroupChat(obj)"
                     :class="{ 
@@ -356,19 +359,19 @@
           <div class="messages-container">
             <graffiti-discover
               v-slot="{ objects: messageObjects, isInitialPolling }"
-              :channels="[activeChannel]"
+              :channels="chatType==='direct' ? [[$graffitiSession.value.actor, activeChannel].sort().join('--')] : [activeChannel]"
               :schema="{
-      properties: {
-        value: {
-          required:['content','published'],
-          properties:{
-            content:{type:'string'},
-            published:{type:'number'},
-            liked:{ type: 'boolean' }
-          }
+    properties: {
+      value: {
+        required:['content','published'],
+        properties:{
+          content:{type:'string'},
+          published:{type:'number'},
+          liked:{ type: 'boolean' }
         }
       }
-    }"
+    }
+  }"
               @update:objects="processIncomingMessages($event,$graffitiSession.value)"
             >
               <ul>
@@ -433,24 +436,43 @@
 
               <template v-if="chatType==='group' && $graffitiSession.value">
                 <graffiti-discover
-                  v-slot="{ objects: groupChatObjects }"
+                  v-model:objects="activeGroupObjects"
+                  ref="activeGroupDiscover"
                   :channels="['designftw']"
                   :schema="{
-          properties:{ value:{
-            required:['activity','object'],
-            properties:{
-              activity:{const:'Create'},
-              object:{
-                required:['type','channel'],
-                properties:{ type:{const:'Group Chat'}, channel:{type:'string'} }
-              }
-            }
-          }}
-        }"
+      properties:{ value:{
+        required:['activity','object'],
+        properties:{
+          activity:{const:'Create'},
+          object:{
+            required:['type','channel'],
+            properties:{ type:{const:'Group Chat'}, channel:{type:'string'} }
+          }
+        }
+      }}
+    }"
                 >
                   <div
-                    v-if="groupChatObjects.some(o=>o.value.object.channel===activeChannel)"
+                    v-if="activeGroupObjects.some(o => o.value.object.channel === activeChannel)"
                   >
+                    <div class="group-members">
+                      <h3>Group Members</h3>
+                      <ul>
+                        <li
+                          v-for="obj in activeGroupObjects.filter(o => o.value.object.channel === activeChannel)"
+                          :key="obj.url + '-members'"
+                        >
+                          <ul>
+                            <li
+                              v-for="member in obj.value.object.members"
+                              :key="member"
+                            >
+                              {{ displayName(member) }}
+                            </li>
+                          </ul>
+                        </li>
+                      </ul>
+                    </div>
                     <form
                       @submit.prevent="renameGroupChat($graffitiSession.value)"
                     >
@@ -460,6 +482,12 @@
                         placeholder="New group name"
                       />
                       <input type="submit" value="Rename Group" />
+                    </form>
+                    <form
+                      @submit.prevent="addUserToGroup($graffitiSession.value)"
+                    >
+                      <input v-model="userToAdd" placeholder="User ID to add" />
+                      <button type="submit">Add to Group</button>
                     </form>
                   </div>
                 </graffiti-discover>

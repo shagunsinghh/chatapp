@@ -85,6 +85,16 @@ button.active:hover {
   display: flex;
   gap: 20px;
 }
+.group-members {
+  background: #eef7ff;
+  border: 1px solid #b6d5f5;
+  padding: 0.5rem;
+  margin: 1rem 0;
+  border-radius: 4px;
+}
+.group-members ul {
+  padding-left: 1rem;
+}
 
 .chat-sidebar {
   flex: 1;
