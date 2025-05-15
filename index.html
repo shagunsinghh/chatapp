@@ -24,7 +24,7 @@
       <button
         v-if="!$graffitiSession.value"
         @click="$graffiti.login()"
-        class="bounce"
+        class="login-button bounce"
       >
         Log In
       </button>
@@ -34,6 +34,88 @@
 
         <div v-if="myProfile" class="my-profile">
           <h2>My Profile</h2>
+
+          <button @click="startProfileEdit">
+            {{ editingProfile ? "Cancel Edit" : "Edit Profile" }}
+          </button>
+
+          <div v-if="editingProfile">
+            <form @submit.prevent="updateProfile($graffitiSession.value)">
+              <input
+                type="text"
+                v-model="profileName"
+                placeholder="Name (required)"
+                required
+              />
+              <input
+                type="text"
+                v-model="profilePronouns"
+                placeholder="Pronouns (optional)"
+              />
+              <input
+                type="text"
+                v-model="profileAge"
+                placeholder="Age (private)"
+              />
+              <input
+                type="text"
+                v-model="profileLocation"
+                placeholder="Location (private)"
+              />
+
+              <div class="profile-picture-upload">
+                <label for="edit-profile-picture">Update Profile Picture</label>
+                <input
+                  id="edit-profile-picture"
+                  type="file"
+                  accept="image/*"
+                  @change="setFileToUpload"
+                />
+                <button
+                  type="button"
+                  v-if="fileToUpload"
+                  @click="uploadProfilePicture($graffitiSession.value)"
+                >
+                  Upload Picture
+                </button>
+              </div>
+
+              <input type="submit" value="Save Changes" />
+            </form>
+          </div>
+
+          <div v-else>
+            <graffiti-get
+              v-if="profilePictureUrl"
+              :url="profilePictureUrl"
+              :schema="graffitiFileSchema"
+              v-slot="{ object }"
+            >
+              <graffiti-object-to-file
+                :object="object"
+                v-slot="{ fileDataUrl }"
+              >
+                <img
+                  :src="fileDataUrl"
+                  alt="Profile picture"
+                  class="profile-picture"
+                />
+              </graffiti-object-to-file>
+            </graffiti-get>
+            <p><strong>Name:</strong> {{ myProfile.name }}</p>
+            <p v-if="myProfile.pronouns">
+              <strong>Pronouns:</strong> {{ myProfile.pronouns }}
+            </p>
+            <p v-if="privateProfile && privateProfile.age">
+              <strong>Age:</strong> {{ privateProfile.age }}
+            </p>
+            <p v-if="privateProfile && privateProfile.location">
+              <strong>Location:</strong> {{ privateProfile.location }}
+            </p>
+          </div>
+        </div>
+
+        <div v-else>
           <graffiti-get
             v-if="profilePictureUrl"
             :url="profilePictureUrl"
@@ -106,32 +188,29 @@
             <input type="submit" value="Save Profile" />
           </form>
         </div>
-      </template>
+      
+      <div v-if="$graffitiSession.value" class="chat-container">
+        <!-- Sidebar: tabs + list of chats -->
+        <aside class="sidebar">
+          <div class="chat-tabs">
+            <button
+              class="tab"
+              :class="{ active: chatType === 'group' }"
+              @click="switchToGroupChat"
+            >
+              Group Chats
+            </button>
+            <button
+              class="tab"
+              :class="{ active: chatType === 'direct' }"
+              @click="switchToDirectMessages"
+            >
+              Direct Messages
+            </button>
+          </div>
 
-      <div class="chat-tabs">
-        <button
-          class="tab"
-          :class="{ active: chatType === 'group' }"
-          @click="switchToGroupChat"
-        >
-          Group Chats
-        </button>
-        <button
-          class="tab"
-          :class="{ active: chatType === 'direct' }"
-          @click="switchToDirectMessages"
-        >
-          Direct Messages
-        </button>
-      </div>
-
-      <!-- Restructured vertical layout -->
-      <!-- Replace the vertical layout section in index.html with this -->
-      <!-- Line ~275-278 in index.html -->
-      <div class="chat-layout">
-        <!-- Sidebar area -->
-        <div class="chat-sidebar">
-          <div v-show="chatType === 'group' && $graffitiSession.value">
+          <!-- Group Chat List -->
+          <div v-show="chatType === 'group'">
             <h2>Group Chats</h2>
             <form @submit.prevent="createGroupChat($graffitiSession.value)">
               <input
@@ -141,11 +220,9 @@
               />
               <input type="submit" value="Create Group Chat" />
             </form>
-
             <p v-if="historyLoading" class="loading-message">
               Loading your chat history...
             </p>
-
             <graffiti-discover
               ref="groupChatsDiscover"
               v-slot="{ objects: groupChatObjects, isInitialPolling }"
@@ -157,11 +234,12 @@
               properties: {
                 activity: { const: 'Create' },
                 object: {
-                  required: ['type','name','channel'],
+                  required: ['type','name','channel','members'],
                   properties: {
                     type: { const: 'Group Chat' },
                     name: { type: 'string' },
-                    channel: { type: 'string' }
+                    channel: { type: 'string' },
+                    members: { type: 'array' }
                   }
                 }
               }
@@ -177,7 +255,7 @@
                 >
                   <button
                     @click="joinGroupChat(obj)"
-                    :class="{ 
+                    :class="{
                 active: activeChannel === obj.value.object.channel,
                 'previously-joined': joinedGroupChats.includes(obj.value.object.channel)
               }"
@@ -185,7 +263,6 @@
                     {{ renameObjects.find(r => r.value.describes ===
                     obj.value.object.channel)?.value.name ||
                     obj.value.object.name }}
-
                     <span
                       v-if="joinedGroupChats.includes(obj.value.object.channel)"
                       class="joined-indicator"
@@ -198,52 +275,47 @@
             </graffiti-discover>
           </div>
 
-          <div v-show="chatType === 'direct' && $graffitiSession.value">
+          <!-- Direct Message List -->
+          <div v-show="chatType === 'direct'">
             <h2>Direct Messages</h2>
-            <div v-if="$graffitiSession.value" class="dm-actions">
-              <form
-                @submit.prevent="startDirectMessage($graffitiSession.value)"
-                class="inline-form"
-              >
-                <input
-                  type="text"
-                  v-model="directMessageUser"
-                  placeholder="Recipient's User ID"
-                />
-                <input type="submit" value="Send Message" />
-              </form>
-            </div>
-
-            <div
-              v-if="$graffitiSession.value && dmhis.length"
-              class="conversation-history"
+            <form
+              @submit.prevent="startDirectMessage($graffitiSession.value)"
+              class="inline-form"
             >
+              <input
+                type="text"
+                v-model="directMessageUser"
+                placeholder="Recipient's User ID"
+              />
+              <input type="submit" value="Send Message" />
+            </form>
+
+            <div v-if="dmhis.length" class="conversation-history">
               <h3>My Conversations</h3>
               <ul class="conversation-list">
                 <li v-for="userId in sortedConversations()" :key="userId">
                   <button
-                    @click="
-                openConversation(userId, $graffitiSession.value);
-                showProfile(userId)"
+                    @click="openConversation(userId, $graffitiSession.value); showProfile(userId)"
                     :class="{ active: activeChannel === userId }"
                   >
                     {{ userId }}
                     <div class="preview-message" v-if="last[userId]">
-                      <small>{{ formatTime(last[userId].timestamp) }}: </small>
-                      <span
-                        >{{ last[userId].content.slice(0,30) }}{{
-                        last[userId].content.length>30?'…':'' }}</span
-                      >
+                      <small>{{ formatTime(last[userId].timestamp) }}:</small>
+                      <span>
+                        {{ last[userId].content.slice(0,30) }} {{
+                        last[userId].content.length > 30 ? '…' : '' }}
+                      </span>
                     </div>
                   </button>
                 </li>
               </ul>
             </div>
           </div>
-        </div>
+        </aside>
 
-        <!-- Chat main area -->
-        <div class="chat-main" v-if="activeChannel">
+        <!-- Main: active conversation -->
+        <main class="chat-main" v-if="activeChannel">
+          <!-- Chat Header -->
           <div class="chat-header">
             <h2 class="chat-title">Conversation</h2>
             <div
@@ -254,8 +326,9 @@
             </div>
           </div>
 
+          <!-- Profile Panel for Direct Messages -->
           <div
-            v-if="chatType==='direct' && showProfilePanel && activeChannel && activeChannel !== $graffitiSession.value.actor"
+            v-if="chatType === 'direct' && showProfilePanel && activeChannel !== $graffitiSession.value.actor"
             class="profile-panel"
           >
             <h3>Profile</h3>
@@ -271,13 +344,12 @@
                   v-slot="{ fileDataUrl }"
                 >
                   <img
-                    :src="fileDataUrl"
+                    src="{{ fileDataUrl }}"
                     alt="Profile picture"
                     class="profile-picture"
                   />
                 </graffiti-object-to-file>
               </graffiti-get>
-
               <p><strong>Name:</strong> {{ currentProfile.value.name }}</p>
               <p v-if="currentProfile.value.pronouns">
                 <strong>Pronouns:</strong> {{ currentProfile.value.pronouns }}
@@ -293,229 +365,163 @@
             <div v-else>Profile not created yet.</div>
           </div>
 
-          <graffiti-discover
-            v-model:objects="profileObjects"
-            :channels="[ activeChannel, `${activeChannel}-private` ]"
-            :schema="{
+          <!-- Group Members & Settings -->
+          <template v-if="chatType === 'group'">
+            <graffiti-discover
+              v-model:objects="activeGroupObjects"
+              ref="activeGroupDiscover"
+              :channels="['designftw']"
+              :schema="{
         properties: {
           value: {
-            required: ['describes'],
+            required: ['activity','object'],
             properties: {
-              describes: { type: 'string' },
-              name:      { type: 'string' },
-              pronouns:  { type: 'string' },
-              age:       { type: 'string' },
-              location:  { type: 'string' }
+              activity: { const: 'Create' },
+              object: {
+                required: ['type','channel','members'],
+                properties: {
+                  type:    { const: 'Group Chat' },
+                  channel: { type: 'string' },
+                  members: { type: 'array' }
+                }
+              }
             }
           }
         }
       }"
-          />
-
-          <div v-if="getPinnedCount()>0" class="pinned-toggle">
-            <button @click="togglepinnedMess()" class="toggle-button">
-              <span v-if="showPinned">Hide Pinned Messages</span>
-              <span v-else>Show Pinned Messages ({{ getPinnedCount() }})</span>
-            </button>
-          </div>
-
-          <div v-if="showPinned && getPinnedCount()>0" class="pinned-messages">
-            <h3>Pinned Messages</h3>
-            <input
-              type="text"
-              v-model="pinnedSearchQuery"
-              placeholder="Search pinned messages..."
-              class="message-input"
-            />
-            <ul>
-              <li
-                v-for="msg in pinnedMess[activeChannel].filter(m =>
-    m.value.content.toLowerCase().includes(pinnedSearchQuery.toLowerCase())
-  )"
-                :key="msg.url"
-              >
-                <div class="message-header">
-                  <strong
-                    >{{ msg.value.sender || msg.actor }}<span
-                      v-if="msg.actor===$graffitiSession.value.actor"
-                      >(you)</span
-                    ></strong
-                  >
-                  <span class="timestamp"
-                    >{{ formatTime(msg.value.published) }}</span
-                  >
-                </div>
-                <div class="message-content">{{ msg.value.content }}</div>
-                <button
-                  @click="togglePinMessage(msg,$graffitiSession.value)"
-                  class="unpin-button"
-                >
-                  Unpin
-                </button>
-              </li>
-            </ul>
-          </div>
-
-          <div class="messages-container">
-            <graffiti-discover
-              v-slot="{ objects: messageObjects, isInitialPolling }"
-              :channels="chatType==='direct' ? [[$graffitiSession.value.actor, activeChannel].sort().join('--')] : [activeChannel]"
-              :schema="{
-    properties: {
-      value: {
-        required:['content','published'],
-        properties:{
-          content:{type:'string'},
-          published:{type:'number'},
-          liked:{ type: 'boolean' }
-        }
-      }
-    }
-  }"
-              @update:objects="processIncomingMessages($event,$graffitiSession.value)"
             >
-              <ul>
-                <li v-if="isInitialPolling">Loading messages…</li>
-                <li v-else-if="messageObjects.length===0">No messages yet.</li>
-                <li
-                  v-else
-                  v-for="obj in messageObjects
-           .filter(m=>!activeSender||m.value.sender===activeSender)
-           .sort((a,b)=>b.value.published-a.value.published)"
-                  :key="obj.url"
-                  :class="{ pinned: obj.value.pinned }"
-                >
-                  <div class="message-header">
-                    <strong
-                      >{{ obj.value.sender||obj.actor }}<span
-                        v-if="obj.actor===$graffitiSession.value.actor"
-                        >(you)</span
-                      ></strong
+              <div
+                v-if="activeGroupObjects.some(o => o.value.object.channel === activeChannel)"
+              >
+                <div class="group-members">
+                  <h3>Group Members</h3>
+                  <ul>
+                    <li
+                      v-for="member in activeGroupObjects.find(o => o.value.object.channel === activeChannel).value.object.members"
+                      :key="member"
                     >
-                    <span class="timestamp"
-                      >{{ formatTime(obj.value.published) }}</span
-                    >
-                  </div>
-                  <div class="message-content">{{ obj.value.content }}</div>
-                  <div class="message-actions">
-                    <template v-if="obj.actor===$graffitiSession.value.actor">
-                      <button @click="editMessage(obj)" class="bounce-on-hover">
-                        Edit
-                      </button>
-                      <button
-                        @click="deleteMessage(obj)"
-                        class="bounce-on-hover"
-                      >
-                        Delete
-                      </button>
-                      <button
-                        @click="togglePinMessage(obj,$graffitiSession.value)"
-                        class="pin-button bounce-on-hover"
-                      >
-                        {{ obj.value.pinned ? 'Unpin' : 'Pin' }}
-                      </button>
-                      <button
-                        @click="toggleLikeMessage(obj,$graffitiSession.value)"
-                        :class="['like-button bounce-on-hover', { liked: obj.value.liked }]"
-                      >
-                        {{ obj.value.liked ? 'Unlike' : 'Like' }}
-                      </button>
-                    </template>
+                      {{ displayName(member) }}
+                    </li>
+                  </ul>
+                </div>
 
-                    <template v-else>
-                      <button
-                        @click="togglePinMessage(obj,$graffitiSession.value)"
-                        class="pin-button"
-                      >
-                        {{ obj.value.pinned?'Unpin':'Pin' }}
-                      </button>
-                    </template>
-                  </div>
-                </li>
-              </ul>
+                <!-- Rename Group Form -->
+                <form @submit.prevent="renameGroupChat($graffitiSession.value)">
+                  <input
+                    type="text"
+                    v-model="rename"
+                    placeholder="New group name"
+                  />
+                  <input type="submit" value="Rename Group" />
+                </form>
 
-              <template v-if="chatType==='group' && $graffitiSession.value">
-                <graffiti-discover
-                  v-model:objects="activeGroupObjects"
-                  ref="activeGroupDiscover"
-                  :channels="['designftw']"
-                  :schema="{
-      properties:{ value:{
-        required:['activity','object'],
-        properties:{
-          activity:{const:'Create'},
-          object:{
-            required:['type','channel'],
-            properties:{ type:{const:'Group Chat'}, channel:{type:'string'} }
+                <!-- Add User Form -->
+                <form @submit.prevent="addUserToGroup($graffitiSession.value)">
+                  <input
+                    type="text"
+                    v-model="userToAdd"
+                    placeholder="User ID to add"
+                  />
+                  <button type="submit">Add to Group</button>
+                </form>
+              </div>
+            </graffiti-discover>
+          </template>
+
+          <!-- Messages List (below the group settings) -->
+          <div class="messages-container">
+  <graffiti-discover
+    v-slot="{ objects: messageObjects, isInitialPolling }"
+    :channels="chatType === 'direct'
+      ? [[$graffitiSession.value.actor, activeChannel].sort().join('--')]
+      : [activeChannel]"
+    :schema="{
+      properties: {
+        value: {
+          required: ['content','published'],
+          properties: {
+            content:   { type: 'string' },
+            published: { type: 'number' },
+            liked:     { type: 'boolean' }
           }
         }
-      }}
+      }
     }"
-                >
-                  <div
-                    v-if="activeGroupObjects.some(o => o.value.object.channel === activeChannel)"
-                  >
-                    <div class="group-members">
-                      <h3>Group Members</h3>
-                      <ul>
-                        <li
-                          v-for="obj in activeGroupObjects.filter(o => o.value.object.channel === activeChannel)"
-                          :key="obj.url + '-members'"
-                        >
-                          <ul>
-                            <li
-                              v-for="member in obj.value.object.members"
-                              :key="member"
-                            >
-                              {{ displayName(member) }}
-                            </li>
-                          </ul>
-                        </li>
-                      </ul>
-                    </div>
-                    <form
-                      @submit.prevent="renameGroupChat($graffitiSession.value)"
-                    >
-                      <input
-                        type="text"
-                        v-model="rename"
-                        placeholder="New group name"
-                      />
-                      <input type="submit" value="Rename Group" />
-                    </form>
-                    <form
-                      @submit.prevent="addUserToGroup($graffitiSession.value)"
-                    >
-                      <input v-model="userToAdd" placeholder="User ID to add" />
-                      <button type="submit">Add to Group</button>
-                    </form>
-                  </div>
-                </graffiti-discover>
-              </template>
-            </graffiti-discover>
-          </div>
-        </div>
-        <div class="chat-main" v-else>
-          <p>Select a conversation to view messages.</p>
+    @update:objects="processIncomingMessages($event, $graffitiSession.value)"
+  >
+    <ul>
+      <li v-if="isInitialPolling">Loading messages…</li>
+      <li v-else-if="messageObjects.length === 0">No messages yet.</li>
+      <li
+        v-else
+        v-for="obj in messageObjects
+          .filter(m => !activeSender || m.value.sender === activeSender)
+          .sort((a, b) => b.value.published - a.value.published)"
+        :key="obj.url"
+        class="chat-message"
+        :class="[
+          { pinned: obj.value.pinned },
+          obj.actor === $graffitiSession.value.actor
+            ? 'self-message'
+            : 'other-message'
+        ]"
+      >
+        <div class="message-header">
+          <strong>
+            {{ obj.value.sender || obj.actor }}
+            <span v-if="obj.actor === $graffitiSession.value.actor">(you)</span>
+          </strong>
+          <span class="timestamp">{{ formatTime(obj.value.published) }}</span>
         </div>
 
-        <!-- Message Composer Section -->
-        <div
-          v-if="$graffitiSession.value && activeChannel"
-          class="message-composer"
-        >
-          <div class="message-context">
-            Sending to:
-            <span class="message-context-name">{{ activeChatName }}</span>
-          </div>
-          <div class="message-form">
+        <div class="message-content">
+          {{ obj.value.content }}
+        </div>
+
+        <div class="message-actions">
+          <template v-if="obj.actor === $graffitiSession.value.actor">
+            <button @click="editMessage(obj)" class="bounce-on-hover">Edit</button>
+            <button @click="deleteMessage(obj)" class="bounce-on-hover">Delete</button>
+            <button
+              @click="togglePinMessage(obj, $graffitiSession.value)"
+              class="pin-button bounce-on-hover"
+            >
+              {{ obj.value.pinned ? 'Unpin' : 'Pin' }}
+            </button>
+            <button
+              @click="toggleLikeMessage(obj, $graffitiSession.value)"
+              :class="['like-button bounce-on-hover', { liked: obj.value.liked }]"
+            >
+              {{ obj.value.liked ? 'Unlike' : 'Like' }}
+            </button>
+          </template>
+          <template v-else>
+            <button
+              @click="togglePinMessage(obj, $graffitiSession.value)"
+              class="pin-button"
+            >
+              {{ obj.value.pinned ? 'Unpin' : 'Pin' }}
+            </button>
+          </template>
+        </div>
+      </li>
+    </ul>
+  </graffiti-discover>
+</div>
+
+          <!-- Message Composer -->
+          <div class="message-composer" v-if="activeChannel">
+            <div class="message-context">
+              Sending to:
+              <span class="message-context-name">{{ activeChatName }}</span>
+            </div>
             <form @submit.prevent="sendMessage($graffitiSession.value)">
               <fieldset :disabled="sending">
                 <div class="message-input-container">
                   <input
                     type="text"
                     v-model="myMessage"
-                    placeholder="Type your message here..."
+                    placeholder="Type your message here…"
                     ref="messageInput"
                     v-focus
                     class="message-input"
@@ -527,24 +533,11 @@
               </fieldset>
             </form>
           </div>
-        </div>
+        </main>
       </div>
-
-      <graffiti-discover
-        v-model:objects="renameObjects"
-        :channels="['designftw']"
-        :schema="{
-          properties:{ value:{
-            required:['name','describes'],
-            properties:{
-              name:{type:'string'},
-              describes:{type:'string'}
-            }
-          }}
-        }"
-      />
-
-      <script src="index.js" type="module"></script>
     </div>
+    </template>
+
+    <script src="index.js" type="module"></script>
   </body>
 </html>

@@ -12,11 +12,14 @@ createApp({
     return {
       userToAdd: "",
       pinnedSearchQuery: "",
+      editingProfile: false,
       myMessage: "",
       sending: false,
       chatType: "group",
       activeChannel: null,
       groupChatObjects: [],
+      showGroupMembers: false,
+      dmChannelStubs: [],
       activeChatName: "",
       dmhis: [],
       activeSender: null,
@@ -60,23 +63,83 @@ createApp({
     async uploadProfilePicture(session) {
       if (!this.fileToUpload) return alert("No file selected");
 
-      const pictureData = {
-        userId: session.actor,
-        timestamp: Date.now(),
-      };
+      // Ensure the file is an image
+      if (!this.fileToUpload.type.startsWith("image/")) {
+        return alert("Please select an image file");
+      }
 
-      const obj = await fileToGraffitiObject(this.fileToUpload, pictureData);
-      const { url } = await this.$graffiti.put(obj, session);
-      this.profilePictureUrl = url;
-      alert("Profile picture uploaded!");
+      // Check file size (5MB limit)
+      if (this.fileToUpload.size > 5 * 1024 * 1024) {
+        return alert("Image file size must be less than 5MB");
+      }
+
+      try {
+        // Add a loading indicator or message
+        const uploadButton = document.querySelector(
+          ".profile-picture-upload button"
+        );
+        if (uploadButton) {
+          const originalText = uploadButton.textContent;
+          uploadButton.textContent = "Uploading...";
+          uploadButton.disabled = true;
+        }
+
+        const pictureData = {
+          userId: session.actor,
+          timestamp: Date.now(),
+        };
+
+        const obj = await fileToGraffitiObject(this.fileToUpload, pictureData);
+        const { url } = await this.$graffiti.put(obj, session);
+        this.profilePictureUrl = url;
+
+        // Reset the button state
+        if (uploadButton) {
+          uploadButton.textContent = "Upload Complete!";
+          uploadButton.disabled = false;
+          setTimeout(() => {
+            uploadButton.textContent = "Upload Picture";
+          }, 2000);
+        }
+
+        // If we're creating a new profile, make sure the picture will be included
+        if (this.myProfile) {
+          this.myProfile.picture = url;
+        }
+
+        // Force UI update
+        this.$forceUpdate();
+
+        console.log("Profile picture uploaded successfully:", url);
+      } catch (error) {
+        console.error("Error uploading profile picture:", error);
+        alert("Failed to upload profile picture: " + error.message);
+      }
     },
 
     switchToGroupChat() {
       this.chatType = "group";
+      this.activeChannel = null;
+      this.activeChatName = "";
+    },
+    toggleGroupMembers() {
+      this.showGroupMembers = !this.showGroupMembers;
     },
 
+    getActiveMembersCount() {
+      const activeGroup = this.activeGroupObjects.find(
+        (o) => o.value.object.channel === this.activeChannel
+      );
+      if (activeGroup && activeGroup.value.object.members) {
+        return activeGroup.value.object.members.length;
+      }
+      return 0;
+    },
     switchToDirectMessages() {
       this.chatType = "direct";
+      this.activeChannel = null;
+      this.activeChatName = "";
+      this.loadAllDirectMessages();
     },
 
     saveConversationHistory() {
@@ -133,6 +196,7 @@ createApp({
       if (!session) return;
       this.activeChannel = null;
       this.activeChatName = "";
+      this.directMessageUser = "";
 
       const userId = session.actor;
 
@@ -151,6 +215,7 @@ createApp({
       this.myProfile = null;
       this.privateProfile = null;
       this.currentUserId = null;
+      this.profilePictureUrl = "";
 
       this.dmhis = [];
       this.last = {};
@@ -185,6 +250,124 @@ createApp({
       this.currentProfile = null;
       this.privateProfileToShow = null;
       this.profileLoading = false;
+    },
+    async discoverAllPossibleDMs(session) {
+      const userId = session.actor;
+
+      const knownUsers = this.profileObjects
+        .map((obj) => obj.value.describes)
+        .filter((id) => id !== userId && !id.endsWith("-private"));
+
+      for (const other of knownUsers) {
+        const dmChannel = [userId, other].sort().join("--");
+
+        await new Promise((resolve) => {
+          this.$graffiti.discover({
+            channels: [dmChannel],
+            schema: {
+              properties: {
+                value: {
+                  required: ["content", "published"],
+                  properties: {
+                    content: { type: "string" },
+                    published: { type: "number" },
+                    sender: { type: "string" },
+                  },
+                },
+              },
+            },
+            callback: (objects) => {
+              if (objects && objects.length > 0) {
+                const latest = objects.reduce((a, b) =>
+                  a.value.published > b.value.published ? a : b
+                );
+
+                if (!this.dmhis.includes(other)) {
+                  this.dmhis.push(other);
+                }
+
+                this.last[other] = {
+                  content: latest.value.content,
+                  timestamp: latest.value.published,
+                };
+
+                this.saveConversationHistory();
+              }
+              resolve();
+            },
+          });
+        });
+      }
+    },
+    async updateProfile(session) {
+      if (!this.profileName.trim()) {
+        alert("Name is required");
+        return;
+      }
+
+      if (this.profileAge && isNaN(Number(this.profileAge.trim()))) {
+        alert("Please enter a valid number for age.");
+        return;
+      }
+
+      const updatedPublic = {
+        name: this.profileName.trim(),
+        pronouns: this.profilePronouns.trim() || undefined,
+        describes: session.actor,
+        published: Date.now(),
+      };
+
+      // Make sure to include the profile picture URL if it exists
+      if (this.profilePictureUrl) {
+        updatedPublic.picture = this.profilePictureUrl;
+      }
+
+      // If the myProfile already has a picture and we haven't set a new one, keep the old one
+      if (!this.profilePictureUrl && this.myProfile && this.myProfile.picture) {
+        updatedPublic.picture = this.myProfile.picture;
+      }
+
+      console.log("Updating profile with picture:", updatedPublic.picture);
+
+      await this.$graffiti.put(
+        {
+          value: updatedPublic,
+          channels: [session.actor],
+        },
+        session
+      );
+
+      const updatedPrivate = {
+        age: this.profileAge.trim() || undefined,
+        location: this.profileLocation.trim() || undefined,
+        describes: `${session.actor}-private`,
+        published: Date.now(),
+      };
+
+      await this.$graffiti.put(
+        {
+          value: updatedPrivate,
+          channels: [`${session.actor}-private`],
+          allowed: [session.actor],
+        },
+        session
+      );
+
+      this.editingProfile = false;
+
+      // After updating the profile, make sure the local myProfile object is updated
+      this.myProfile = {
+        ...updatedPublic,
+      };
+
+      this.privateProfile = {
+        ...updatedPrivate,
+      };
+
+      // Force a UI update
+      this.$forceUpdate();
+
+      await this.loadExistingProfile(session);
     },
 
     async loadExistingProfile(session) {
@@ -256,7 +439,9 @@ createApp({
       }
 
       this.profileLoading = false;
+
       await this.loadConversationHistory();
+      await this.discoverAllPossibleDMs(session);
     },
 
     toggleProfilePanel() {
@@ -311,10 +496,39 @@ createApp({
 
       return userId;
     },
+    startProfileEdit() {
+      this.editingProfile = !this.editingProfile;
+
+      if (this.editingProfile) {
+        // Only load current user's profile data when starting edit
+        if (this.myProfile) {
+          this.profileName = this.myProfile.name || "";
+          this.profilePronouns = this.myProfile.pronouns || "";
+
+          if (this.privateProfile) {
+            this.profileAge = this.privateProfile.age || "";
+            this.profileLocation = this.privateProfile.location || "";
+          } else {
+            this.profileAge = "";
+            this.profileLocation = "";
+          }
+        } else {
+          // Reset form if no profile exists yet
+          this.resetProfileFormState();
+        }
+      } else {
+        // When cancelling edit, reset the form
+        this.resetProfileFormState();
+      }
+    },
 
     async createProfile(session) {
       if (!this.profileName.trim()) {
         alert("Name is required");
+        return;
+      }
+      if (this.profileAge && isNaN(Number(this.profileAge.trim()))) {
+        alert("Please enter a valid number for age.");
         return;
       }
 
@@ -382,6 +596,7 @@ createApp({
       ) {
         this.profileObjects.push({ value: this.privateProfile });
       }
+      await this.loadExistingProfile(session);
     },
     async addUserToGroup(session) {
       if (!this.userToAdd.trim()) {
@@ -637,81 +852,147 @@ createApp({
         published: Date.now(),
         pinned: false,
         liked: false,
+        sender: session.actor,
       };
 
       if (this.chatType === "direct") {
-        payload.sender = session.actor;
+        // ——— Your existing DM logic ———
         const dmChannel = [session.actor, this.activeChannel].sort().join("--");
 
-        if (!this.dmhis.includes(this.activeChannel)) {
-          this.dmhis.push(this.activeChannel);
-        }
+        // 1) create the DM stub
+        await this.$graffiti.put(
+          {
+            value: {
+              type: "DirectMessageChannel",
+              participants: [session.actor, this.activeChannel],
+              describes: dmChannel,
+              published: Date.now(),
+            },
+            channels: ["designftw"],
+          },
+          session
+        );
 
-        this.last[this.activeChannel] = {
-          content: this.myMessage,
-          timestamp: payload.published,
-        };
-
-        this.saveConversationHistory();
-
-        // Add allowed field to permit the recipient to pin/like
+        // 2) actually send the DM
         await this.$graffiti.put(
           {
             value: payload,
             channels: [dmChannel],
-            // For direct messages, allow the recipient to modify
-            allowed:
-              this.chatType === "direct" ? [this.activeChannel] : undefined,
-            // Only allow specific operations on these paths
+            allowed: [session.actor, this.activeChannel],
             allowedOperations: ["replace:/pinned", "replace:/liked"],
           },
           session
         );
 
-        this.sending = false;
-        this.myMessage = "";
-        await this.$nextTick();
-        this.$refs.messageInput?.focus();
-        return;
+        // 3) update your DM sidebar state
+        if (!this.dmhis.includes(this.activeChannel)) {
+          this.dmhis.push(this.activeChannel);
+        }
+        this.last[this.activeChannel] = {
+          content: this.myMessage,
+          timestamp: payload.published,
+        };
+        this.saveConversationHistory();
+      } else {
+        // ——— NEW: group‑chat logic ———
+        // send straight into the group’s channel
+        await this.$graffiti.put(
+          {
+            value: payload,
+            channels: [this.activeChannel],
+            // you can omit `allowed` here; group members are implicitly allowed
+          },
+          session
+        );
+        // no local sidebar state to update – the <graffiti-discover> in your group view will pick it up
       }
 
-      // For group messages, allow all group members to pin/like
-      const groupObj = this.getActiveGroupObject();
-      const groupMembers = groupObj?.value?.object?.members || [];
-
-      await this.$graffiti.put(
-        {
-          value: payload,
-          channels: [this.activeChannel],
-          // For group messages, allow all members to modify
-          allowed: groupMembers.length > 0 ? groupMembers : undefined,
-          // Only allow specific operations on these paths
-          allowedOperations: ["replace:/pinned", "replace:/liked"],
-        },
-        session
-      );
-
+      // common cleanup
       this.sending = false;
       this.myMessage = "";
       await this.$nextTick();
       this.$refs.messageInput?.focus();
     },
-
-    startDirectMessage(session) {
-      if (!this.directMessageUser.trim()) {
+    async startDirectMessage(session) {
+      const recipient = this.directMessageUser.trim();
+      if (!recipient) {
         alert("Please enter a user ID");
         return;
       }
 
-      this.activeChannel = this.directMessageUser;
-      this.activeChatName = this.directMessageUser;
+      this.activeChannel = recipient;
+      this.activeChatName = this.displayName(recipient) || recipient;
       this.chatType = "direct";
       this.activeSender = null;
       this.showPinned = false;
 
-      if (!this.dmhis.includes(this.directMessageUser)) {
-        this.dmhis.push(this.directMessageUser);
+      // FIXED: Always add the recipient to dmhis
+      if (!this.dmhis.includes(recipient)) {
+        this.dmhis.push(recipient);
+
+        // Initialize with an empty last message if none exists
+        if (!this.last[recipient]) {
+          this.last[recipient] = {
+            content: "New conversation",
+            timestamp: Date.now(),
+          };
+        }
+
         this.saveConversationHistory();
+      }
+
+      // Create a DM channel
+      const dmChannel = [session.actor, recipient].sort().join("--");
+
+      // Try to discover existing messages
+      const alreadyHasMessages = await new Promise((resolve) => {
+        this.$graffiti.discover({
+          channels: [dmChannel],
+          schema: {
+            properties: {
+              value: {
+                required: ["content"],
+                properties: {
+                  content: { type: "string" },
+                },
+              },
+            },
+          },
+          callback: (objects) => {
+            resolve(objects.length > 0);
+          },
+        });
+      });
+
+      if (!alreadyHasMessages) {
+        try {
+          // Send a system message to initialize the conversation
+          await this.$graffiti.put(
+            {
+              value: {
+                content: `${session.actor} started a conversation.`,
+                published: Date.now(),
+                pinned: false,
+                liked: false,
+                sender: session.actor,
+              },
+              channels: [dmChannel],
+              allowed: [session.actor, recipient],
+              allowedOperations: ["replace:/pinned", "replace:/liked"],
+            },
+            session
+          );
+
+          // Update last message for this conversation
+          this.last[recipient] = {
+            content: `${session.actor} started a conversation.`,
+            timestamp: Date.now(),
+          };
+
+          this.saveConversationHistory();
+        } catch (err) {
+          console.error("Error creating conversation:", err);
+        }
       }
 
       this.directMessageUser = "";
@@ -729,13 +1010,21 @@ createApp({
       if (!actor) return;
 
       try {
+        // Reset current profile state completely before loading a new profile
         this.currentProfile = null;
         this.privateProfileToShow = null;
 
+        // Clear any editing state if we're switching profiles
+        if (this.editingProfile) {
+          this.editingProfile = false;
+        }
+
+        // Find the public profile in existing objects
         let publicProfile = this.profileObjects.find(
           (obj) => obj.value && obj.value.describes === actor
         );
 
+        // Discover profile data for this actor
         await new Promise((resolve) => {
           const timeout = setTimeout(() => {
             resolve();
@@ -776,6 +1065,7 @@ createApp({
           });
         });
 
+        // Re-find the profile after discovery
         publicProfile = this.profileObjects.find(
           (obj) => obj.value && obj.value.describes === actor
         );
@@ -835,6 +1125,8 @@ createApp({
         }
 
         this.showProfilePanel = true;
+
+        // Force an update of the UI
         this.$nextTick(() => {
           this.$forceUpdate();
         });
@@ -844,6 +1136,21 @@ createApp({
         this.privateProfileToShow = null;
         this.showProfilePanel = true;
       }
+    },
+    resetProfileFormState() {
+      // Reset all profile form fields
+      this.profileName = "";
+      this.profilePronouns = "";
+      this.profileAge = "";
+      this.profilePictureUrl = "";
+      this.profileLocation = "";
+      this.fileToUpload = null;
+
+      // Clear any file input by resetting its value
+      const fileInputs = document.querySelectorAll('input[type="file"]');
+      fileInputs.forEach((input) => {
+        input.value = "";
+      });
     },
 
     onProfilePictureChange(event) {
@@ -918,6 +1225,14 @@ createApp({
       this.chatType = "direct";
       this.activeSender = null;
       this.showPinned = false;
+
+      // Reset profile panel and form state when changing conversations
+      if (this.showProfilePanel) {
+        this.showProfilePanel = false;
+        this.currentProfile = null;
+        this.privateProfileToShow = null;
+        this.resetProfileFormState();
+      }
     },
 
     filterBySender(sender) {
@@ -940,34 +1255,153 @@ createApp({
     },
 
     processIncomingMessages(messages, session) {
+      if (!session) return;
+
       let updated = false;
+      const userId = session.actor;
 
-      messages.forEach((m) => {
-        const sender = m.value.sender;
-        if (!sender || sender === session.actor) return;
+      messages.forEach((msg) => {
+        // Extract sender information - could be in value.sender or in actor field
+        const sender = msg.value.sender || msg.actor;
 
-        if (!this.dmhis.includes(sender)) {
-          this.dmhis.push(sender);
-          updated = true;
+        // Skip messages sent by the current user (we only want to track others)
+        if (sender && sender !== userId) {
+          if (!this.dmhis.includes(sender)) {
+            console.log("Adding new conversation with:", sender);
+            this.dmhis.push(sender);
+            updated = true;
+          }
+
+          // Update the last message for this sender
+          if (
+            !this.last[sender] ||
+            msg.value.published > this.last[sender].timestamp
+          ) {
+            this.last[sender] = {
+              content: msg.value.content,
+              timestamp: msg.value.published,
+            };
+            updated = true;
+          }
         }
 
-        if (
-          !this.last[sender] ||
-          m.value.published > this.last[sender].timestamp
-        ) {
-          this.last[sender] = {
-            content: m.value.content,
-            timestamp: m.value.published,
-          };
-          updated = true;
+        // Also check channels to extract conversation partners
+        if (msg.channels) {
+          msg.channels.forEach((channel) => {
+            if (channel.includes("--")) {
+              const [a, b] = channel.split("--");
+              // The other user in the DM channel
+              const other = a === userId ? b : b === userId ? a : null;
+
+              if (other && other !== userId) {
+                if (!this.dmhis.includes(other)) {
+                  console.log(
+                    "Adding conversation partner from channel:",
+                    other
+                  );
+                  this.dmhis.push(other);
+                  updated = true;
+
+                  // If no last message exists for this partner, create an empty one
+                  if (!this.last[other]) {
+                    this.last[other] = {
+                      content: msg.value.content || "Conversation exists",
+                      timestamp: msg.value.published || Date.now(),
+                    };
+                    updated = true;
+                  }
+                }
+              }
+            }
+          });
         }
       });
 
       if (updated) {
+        console.log("Conversation history updated from incoming messages");
         this.saveConversationHistory();
       }
     },
+    async loadAllDirectMessages() {
+      const session = this.$graffitiSession.value;
+      if (!session) return;
+      const userId = session.actor;
 
+      // 1️⃣ Load anything you’ve persisted locally (from logins past)
+      this.loadConversationHistory();
+
+      // 2️⃣ Discover every DM‐channel stub in designftw
+      this.$graffiti.discover({
+        channels: ["designftw"],
+        schema: {
+          properties: {
+            value: {
+              required: ["type", "participants", "describes"],
+              properties: {
+                type: { const: "DirectMessageChannel" },
+                participants: { type: "array" },
+                describes: { type: "string" },
+              },
+            },
+          },
+        },
+        callback: (dmStubs) => {
+          const stubs = dmStubs.filter((o) =>
+            o.value.participants.includes(userId)
+          );
+
+          stubs.forEach((stub, idx) => {
+            const dmChannel = stub.value.describes;
+            const [a, b] = dmChannel.split("--");
+            const other = a === userId ? b : a;
+
+            // add to sidebar list
+            if (!this.dmhis.includes(other)) {
+              this.dmhis.push(other);
+            }
+
+            // pull in the latest message
+            this.$graffiti.discover({
+              channels: [dmChannel],
+              schema: {
+                properties: {
+                  value: {
+                    required: ["content", "published"],
+                    properties: {
+                      content: { type: "string" },
+                      published: { type: "number" },
+                    },
+                  },
+                },
+              },
+              callback: (msgs) => {
+                if (!msgs.length) return;
+                const latest = msgs.reduce((a, b) =>
+                  a.value.published > b.value.published ? a : b
+                );
+                this.last[other] = {
+                  content: latest.value.content,
+                  timestamp: latest.value.published,
+                };
+                this.saveConversationHistory();
+
+                // 3️⃣ On the very first stub discovered, auto‑open it
+                if (idx === 0) {
+                  this.chatType = "direct";
+                  this.activeChannel = other;
+                  this.activeChatName = this.displayName(other) || other;
+                }
+              },
+            });
+          });
+
+          // If there were any DMs at all, switch you over to the DM tab
+          if (stubs.length) {
+            this.chatType = "direct";
+          }
+        },
+      });
+    },
     togglepinnedMess() {
       this.showPinned = !this.showPinned;
     },
@@ -1079,7 +1513,16 @@ createApp({
           };
 
           await loadProfile();
+
+          // After loading profile, explicitly load direct messages
+          this.loadAllDirectMessages();
         } else if (oldSession) {
+          // Clear the DM discovery timeout when logging out
+          if (this.dmDiscoveryTimeout) {
+            clearTimeout(this.dmDiscoveryTimeout);
+            this.dmDiscoveryTimeout = null;
+          }
+
           this.showProfilePanel = false;
           this.currentProfile = null;
           this.privateProfileToShow = null;
@@ -1100,6 +1543,19 @@ createApp({
         }
       }
     );
+    this.$watch(
+      () => this.chatType,
+      (newChatType) => {
+        if (newChatType === "direct" && this.$graffitiSession.value) {
+          this.loadAllDirectMessages();
+        }
+      }
+    );
+
+    // Also load direct messages when the component is first mounted if the user is logged in
+    if (this.$graffitiSession.value) {
+      this.loadAllDirectMessages();
+    }
 
     setInterval(() => {
       if (this.currentUserId) {

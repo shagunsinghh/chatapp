@@ -4,7 +4,7 @@
 }
 
 body {
-  max-width: 800px;
+  max-width: 80%;
   margin: 0 auto;
   padding: 1rem;
   background-color: #f5f9fc;
@@ -68,7 +68,89 @@ ul {
   background-color: #53a0e4;
   color: white;
 }
+.group-members-toggle {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px;
+  background-color: #e0eef9;
+  color: #2c82c9;
+  border: 1px solid #b6d5f5;
+  border-radius: 4px;
+  cursor: pointer;
+  margin-bottom: 0;
+  font-weight: bold;
+  position: relative;
+}
 
+.group-members-toggle:hover {
+  background-color: #53a0e4;
+  color: white;
+}
+
+/* Add a dropdown indicator */
+.group-members-toggle::after {
+  content: "▼";
+  position: absolute;
+  right: 10px;
+}
+
+.group-members-toggle.expanded::after {
+  content: "▲";
+}
+.chat-message {
+  display: flex;
+  margin: 0.5rem 1rem;
+  align-items: flex-end;
+}
+
+/* YOUR Own Messages */
+.chat-message.self-message .message-content {
+  background-color: #0084ff;
+  color: white;
+  border-radius: 1rem 1rem 0.25rem 1rem;
+  /* remove or override your border-left if desired */
+}
+.chat-message.other-message .message-content {
+  background-color: #e5e5ea;
+  color: black;
+  border-radius: 1rem 1rem 1rem 0.25rem;
+}
+.message-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* pushes timestamp to the right */
+  gap: 1rem; /* space between name and timestamp */
+  margin-bottom: 1rem; /* space below the header before the message */
+}
+
+/* 2) Give extra vertical padding inside the bubble */
+.message-content {
+  padding: 1rem 1.25rem; /* was 0.75rem 1rem */
+  margin-bottom: 1.25rem; /* was 1rem */
+}
+
+/* 3) If you want a little more breathing room around the entire bubble */
+.chat-message .message-content {
+  border-radius: 1rem;
+  /* you could also bump up the max‑width or add margin:
+     margin: 0.5rem 0; */
+}
+
+/* Hidden state for the group members content */
+.group-members-content {
+  display: none;
+  background: #eef7ff;
+  border: 1px solid #b6d5f5;
+  border-top: none;
+  padding: 0.5rem;
+  border-radius: 0 0 4px 4px;
+}
+
+/* Visible state when expanded */
+.group-members-content.visible {
+  display: block;
+}
 .tab.active,
 button.active {
   background-color: #2c82c9;
@@ -98,11 +180,11 @@ button.active:hover {
 
 .chat-sidebar {
   flex: 1;
-  max-width: 300px;
+  max-width: 250px;
 }
 
 .chat-main {
-  flex: 2;
+  flex: 7; /* 3 shares = much wider */
 }
 
 .message-header {
@@ -298,8 +380,7 @@ form input[type="submit"] {
 }
 .chat-layout {
   display: flex;
-  flex-direction: column;
-  gap: 15px;
+  gap: 20px;
 }
 
 .message-composer {
@@ -345,6 +426,11 @@ form input[type="submit"] {
   border-radius: 20px;
   font-size: 1rem;
   background-color: white;
+}
+.sidebar {
+  /* was 280px; shrink it so chat-main gets more space */
+  width: 200px;
+  flex: 0 0 200px;
 }
 
 .send-button {
@@ -432,6 +518,21 @@ form input[type="submit"] {
   margin-bottom: 0.5rem;
   border: 2px solid #53a0e4;
   display: block;
+}
+.login-button {
+  display: block;
+  margin: 4rem auto;
+  font-size: 2rem;
+  padding: 1rem 2rem;
+  background-color: #53a0e4;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.login-button:hover {
+  background-color: #2c82c9;
 }
 
 @media (max-width: 700px) {
