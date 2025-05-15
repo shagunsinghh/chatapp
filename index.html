@@ -367,66 +367,145 @@
 
           <!-- Group Members & Settings -->
           <template v-if="chatType === 'group'">
-            <graffiti-discover
-              v-model:objects="activeGroupObjects"
-              ref="activeGroupDiscover"
-              :channels="['designftw']"
-              :schema="{
-        properties: {
-          value: {
-            required: ['activity','object'],
-            properties: {
-              activity: { const: 'Create' },
-              object: {
-                required: ['type','channel','members'],
-                properties: {
-                  type:    { const: 'Group Chat' },
-                  channel: { type: 'string' },
-                  members: { type: 'array' }
-                }
+  <graffiti-discover
+    v-model:objects="activeGroupObjects"
+    ref="activeGroupDiscover"
+    :channels="['designftw']"
+    :schema="{
+      properties: {
+        value: {
+          required: ['activity','object'],
+          properties: {
+            activity: { const: 'Create' },
+            object: {
+              required: ['type','channel','members'],
+              properties: {
+                type:    { const: 'Group Chat' },
+                channel: { type: 'string' },
+                members: { type: 'array' }
               }
             }
           }
         }
-      }"
+      }
+    }"
+  >
+    <div
+      v-if="activeGroupObjects.some(o => o.value.object.channel === activeChannel)"
+    >
+      <!-- Group settings toggle button -->
+      <button @click="toggleGroupSettings" class="group-settings-toggle">
+        {{ showGroupSettings ? 'Hide Group Settings' : 'Show Group Settings' }}
+      </button>
+      
+      <!-- Group settings collapsible panel -->
+      <div v-show="showGroupSettings" class="group-settings-panel">
+        <!-- Group Members Section -->
+        <div class="group-members">
+          <h3>Group Members</h3>
+          <ul>
+            <li
+              v-for="member in activeGroupObjects.find(o => o.value.object.channel === activeChannel).value.object.members"
+              :key="member"
             >
-              <div
-                v-if="activeGroupObjects.some(o => o.value.object.channel === activeChannel)"
-              >
-                <div class="group-members">
-                  <h3>Group Members</h3>
-                  <ul>
-                    <li
-                      v-for="member in activeGroupObjects.find(o => o.value.object.channel === activeChannel).value.object.members"
-                      :key="member"
-                    >
-                      {{ displayName(member) }}
-                    </li>
-                  </ul>
-                </div>
+              {{ displayName(member) }}
+            </li>
+          </ul>
+        </div>
 
-                <!-- Rename Group Form -->
-                <form @submit.prevent="renameGroupChat($graffitiSession.value)">
-                  <input
-                    type="text"
-                    v-model="rename"
-                    placeholder="New group name"
-                  />
-                  <input type="submit" value="Rename Group" />
-                </form>
+        <!-- Rename Group Form -->
+        <form @submit.prevent="renameGroupChat($graffitiSession.value)">
+          <input
+            type="text"
+            v-model="rename"
+            placeholder="New group name"
+          />
+          <input type="submit" value="Rename Group" />
+        </form>
 
-                <!-- Add User Form -->
-                <form @submit.prevent="addUserToGroup($graffitiSession.value)">
-                  <input
-                    type="text"
-                    v-model="userToAdd"
-                    placeholder="User ID to add"
-                  />
-                  <button type="submit">Add to Group</button>
-                </form>
-              </div>
-            </graffiti-discover>
-          </template>
+        <!-- Add User Form -->
+        <form @submit.prevent="addUserToGroup($graffitiSession.value)">
+          <input
+            type="text"
+            v-model="userToAdd"
+            placeholder="User ID to add"
+          />
+          <button type="submit">Add to Group</button>
+        </form>
+      </div>
+    </div>
+  </graffiti-discover>
+</template>
+          <div
+  class="pinned-messages-section"
+  v-if="pinnedMess[activeChannel] && pinnedMess[activeChannel].length > 0"
+>
+  <div class="pinned-header">
+    <h3>
+      Pinned Messages
+      <span class="pin-count">
+        ({{ pinnedMess[activeChannel].length }})
+      </span>
+    </h3>
+    <button @click="togglePinnedDisplay" class="toggle-button">
+      {{ showPinnedMessages ? "Hide" : "Show" }}
+    </button>
+  </div>
+
+  <!-- --------------- SEARCH BOX --------------- -->
+  <div v-show="showPinnedMessages" class="pinned-search">
+    <input
+      type="text"
+      v-model="pinnedSearchQuery"
+      placeholder="Search pinned messages…"
+      class="pinned-search-input"
+    />
+  </div>
+
+  <div v-if="showPinnedMessages" class="pinned-messages">
+    <!-- no‑results state -->
+    <div
+      v-if="
+        pinnedMess[activeChannel]
+          .filter(m =>
+            m.value.content
+              .toLowerCase()
+              .includes(pinnedSearchQuery.toLowerCase())
+          ).length === 0
+      "
+      class="no-pinned-results"
+    >
+      No pinned messages match your search.
+    </div>
+
+    <!-- filtered list -->
+    <div
+      v-for="message in pinnedMess[activeChannel].filter(m => 
+        m.value.content.toLowerCase().includes(pinnedSearchQuery.toLowerCase())
+      )"
+      :key="message.url"
+      class="pinned-message"
+    >
+      <div class="message-header">
+        <strong>{{ message.value.sender || message.actor }}</strong>
+        <span class="timestamp">
+          {{ formatTime(message.value.published) }}
+        </span>
+      </div>
+      <div class="pinned-content">
+        {{ message.value.content }}
+      </div>
+      <div class="message-actions">
+        <button
+          @click="togglePinMessage(message, $graffitiSession.value)"
+          class="unpin-button"
+        >
+          Unpin
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
           <!-- Messages List (below the group settings) -->
           <div class="messages-container">
@@ -456,7 +535,7 @@
         v-else
         v-for="obj in messageObjects
           .filter(m => !activeSender || m.value.sender === activeSender)
-          .sort((a, b) => b.value.published - a.value.published)"
+          .sort((a, b) => a.value.published - b.value.published)"
         :key="obj.url"
         class="chat-message"
         :class="[

@@ -13,6 +13,7 @@ createApp({
       userToAdd: "",
       pinnedSearchQuery: "",
       editingProfile: false,
+      showGroupSettings: false,
       myMessage: "",
       sending: false,
       chatType: "group",
@@ -26,7 +27,7 @@ createApp({
       activeGroupObjects: [],
       last: {},
       pinnedMess: {},
-      showPinned: false,
+      showPinnedMessages: false,
       showProfilePanel: false,
       profilePictureData: null,
       fileToUpload: null,
@@ -115,6 +116,21 @@ createApp({
         console.error("Error uploading profile picture:", error);
         alert("Failed to upload profile picture: " + error.message);
       }
+    },
+    toggleGroupSettings() {
+      this.showGroupSettings = !this.showGroupSettings;
+
+      // Add or remove the expanded class for the button styling
+      this.$nextTick(() => {
+        const toggleButton = document.querySelector(".group-settings-toggle");
+        if (toggleButton) {
+          if (this.showGroupSettings) {
+            toggleButton.classList.add("expanded");
+          } else {
+            toggleButton.classList.remove("expanded");
+          }
+        }
+      });
     },
 
     switchToGroupChat() {
@@ -702,7 +718,7 @@ createApp({
         this.userToAdd = "";
       } catch (error) {
         console.error("Error adding user to group:", error);
-        alert(`Failed to add user: ${error.message}`);
+        alert(`Failed to add user; only owner can add users`);
       }
     },
     getActiveGroupObject() {
@@ -1321,6 +1337,21 @@ createApp({
         console.log("Conversation history updated from incoming messages");
         this.saveConversationHistory();
       }
+      messages.forEach((msg) => {
+        if (msg.value.pinned && this.activeChannel) {
+          // Make sure pinnedMess for this channel exists
+          if (!this.pinnedMess[this.activeChannel]) {
+            this.pinnedMess[this.activeChannel] = [];
+          }
+
+          // Check if the message is already in pinnedMess
+          if (
+            !this.pinnedMess[this.activeChannel].some((m) => m.url === msg.url)
+          ) {
+            this.pinnedMess[this.activeChannel].push(msg);
+          }
+        }
+      });
     },
     async loadAllDirectMessages() {
       const session = this.$graffitiSession.value;
@@ -1402,8 +1433,8 @@ createApp({
         },
       });
     },
-    togglepinnedMess() {
-      this.showPinned = !this.showPinned;
+    togglePinnedDisplay() {
+      this.showPinnedMessages = !this.showPinnedMessages;
     },
 
     async togglePinMessage(message, session) {
@@ -1417,13 +1448,25 @@ createApp({
 
       message.value.pinned = newStatus;
 
-      const list = (this.pinnedMess[this.activeChannel] ||= []);
+      // Initialize the pinned messages array for this channel if it doesn't exist
+      if (!this.pinnedMess[this.activeChannel]) {
+        this.pinnedMess[this.activeChannel] = [];
+      }
+
       if (newStatus) {
-        if (!list.some((m) => m.url === message.url)) list.push(message);
+        // Add message to pinned if not already there
+        if (
+          !this.pinnedMess[this.activeChannel].some(
+            (m) => m.url === message.url
+          )
+        ) {
+          this.pinnedMess[this.activeChannel].push({ ...message });
+        }
       } else {
-        this.pinnedMess[this.activeChannel] = list.filter(
-          (m) => m.url !== message.url
-        );
+        // Remove message from pinned
+        this.pinnedMess[this.activeChannel] = this.pinnedMess[
+          this.activeChannel
+        ].filter((m) => m.url !== message.url);
       }
 
       this.saveConversationHistory();
