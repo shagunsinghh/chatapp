@@ -190,7 +190,7 @@
         </div>
       
       <div v-if="$graffitiSession.value" class="chat-container">
-        <!-- Sidebar: tabs + list of chats -->
+      
         <aside class="sidebar">
           <div class="chat-tabs">
             <button
@@ -209,7 +209,7 @@
             </button>
           </div>
 
-          <!-- Group Chat List -->
+   
           <div v-show="chatType === 'group'">
             <h2>Group Chats</h2>
             <form @submit.prevent="createGroupChat($graffitiSession.value)">
@@ -275,7 +275,7 @@
             </graffiti-discover>
           </div>
 
-          <!-- Direct Message List -->
+
           <div v-show="chatType === 'direct'">
             <h2>Direct Messages</h2>
             <form
@@ -313,20 +313,30 @@
           </div>
         </aside>
 
-        <!-- Main: active conversation -->
-        <main class="chat-main" v-if="activeChannel">
-          <!-- Chat Header -->
-          <div class="chat-header">
-            <h2 class="chat-title">Conversation</h2>
-            <div
-              class="chat-recipient clickable-user"
-              @click="toggleProfilePanel(); showProfile(activeChannel)"
-            >
-              {{ activeChatName }}
-            </div>
-          </div>
 
-          <!-- Profile Panel for Direct Messages -->
+        <main class="chat-main" v-if="activeChannel">
+
+          <div class="chat-header">
+  <h2 class="chat-title">Conversation</h2>
+
+
+  <div class="chat-recipient">
+    {{ activeChatName }}
+  </div>
+
+
+  <button
+    v-if="chatType === 'direct'"
+    @click="showProfilePanel 
+              ? toggleProfilePanel() 
+              : showProfile(activeChannel)"
+    class="toggle-profile-btn"
+  >
+    {{ showProfilePanel ? 'Hide Profile' : 'Show Profile' }}
+  </button>
+</div>
+
+        
           <div
             v-if="chatType === 'direct' && showProfilePanel && activeChannel !== $graffitiSession.value.actor"
             class="profile-panel"
@@ -365,7 +375,7 @@
             <div v-else>Profile not created yet.</div>
           </div>
 
-          <!-- Group Members & Settings -->
+
           <template v-if="chatType === 'group'">
   <graffiti-discover
     v-model:objects="activeGroupObjects"
@@ -393,14 +403,14 @@
     <div
       v-if="activeGroupObjects.some(o => o.value.object.channel === activeChannel)"
     >
-      <!-- Group settings toggle button -->
+
       <button @click="toggleGroupSettings" class="group-settings-toggle">
         {{ showGroupSettings ? 'Hide Group Settings' : 'Show Group Settings' }}
       </button>
       
-      <!-- Group settings collapsible panel -->
+
       <div v-show="showGroupSettings" class="group-settings-panel">
-        <!-- Group Members Section -->
+ 
         <div class="group-members">
           <h3>Group Members</h3>
           <ul>
@@ -413,7 +423,7 @@
           </ul>
         </div>
 
-        <!-- Rename Group Form -->
+
         <form @submit.prevent="renameGroupChat($graffitiSession.value)">
           <input
             type="text"
@@ -423,7 +433,7 @@
           <input type="submit" value="Rename Group" />
         </form>
 
-        <!-- Add User Form -->
+
         <form @submit.prevent="addUserToGroup($graffitiSession.value)">
           <input
             type="text"
@@ -452,7 +462,7 @@
     </button>
   </div>
 
-  <!-- --------------- SEARCH BOX --------------- -->
+
   <div v-show="showPinnedMessages" class="pinned-search">
     <input
       type="text"
@@ -463,7 +473,7 @@
   </div>
 
   <div v-if="showPinnedMessages" class="pinned-messages">
-    <!-- no‑results state -->
+
     <div
       v-if="
         pinnedMess[activeChannel]
@@ -478,7 +488,7 @@
       No pinned messages match your search.
     </div>
 
-    <!-- filtered list -->
+
     <div
       v-for="message in pinnedMess[activeChannel].filter(m => 
         m.value.content.toLowerCase().includes(pinnedSearchQuery.toLowerCase())
@@ -507,7 +517,7 @@
   </div>
 </div>
 
-          <!-- Messages List (below the group settings) -->
+  
           <div class="messages-container">
   <graffiti-discover
     v-slot="{ objects: messageObjects, isInitialPolling }"
@@ -588,7 +598,7 @@
   </graffiti-discover>
 </div>
 
-          <!-- Message Composer -->
+   
           <div class="message-composer" v-if="activeChannel">
             <div class="message-context">
               Sending to:

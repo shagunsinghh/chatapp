@@ -64,18 +64,15 @@ createApp({
     async uploadProfilePicture(session) {
       if (!this.fileToUpload) return alert("No file selected");
 
-      // Ensure the file is an image
       if (!this.fileToUpload.type.startsWith("image/")) {
         return alert("Please select an image file");
       }
 
-      // Check file size (5MB limit)
       if (this.fileToUpload.size > 5 * 1024 * 1024) {
         return alert("Image file size must be less than 5MB");
       }
 
       try {
-        // Add a loading indicator or message
         const uploadButton = document.querySelector(
           ".profile-picture-upload button"
         );
@@ -94,7 +91,6 @@ createApp({
         const { url } = await this.$graffiti.put(obj, session);
         this.profilePictureUrl = url;
 
-        // Reset the button state
         if (uploadButton) {
           uploadButton.textContent = "Upload Complete!";
           uploadButton.disabled = false;
@@ -103,12 +99,10 @@ createApp({
           }, 2000);
         }
 
-        // If we're creating a new profile, make sure the picture will be included
         if (this.myProfile) {
           this.myProfile.picture = url;
         }
 
-        // Force UI update
         this.$forceUpdate();
 
         console.log("Profile picture uploaded successfully:", url);
@@ -120,7 +114,6 @@ createApp({
     toggleGroupSettings() {
       this.showGroupSettings = !this.showGroupSettings;
 
-      // Add or remove the expanded class for the button styling
       this.$nextTick(() => {
         const toggleButton = document.querySelector(".group-settings-toggle");
         if (toggleButton) {
@@ -210,6 +203,9 @@ createApp({
     async doLogout() {
       const session = this.$graffitiSession.value;
       if (!session) return;
+      if (!confirm("Do you want to log out?")) {
+        return; // user hit Cancel → exit without logging out
+      }
       this.activeChannel = null;
       this.activeChatName = "";
       this.directMessageUser = "";
@@ -238,19 +234,17 @@ createApp({
       this.pinnedMess = {};
       this.joinedGroupChats = [];
 
-      if (confirm("Do you want to log out?")) {
-        const localImpl = this.$graffiti.graffiti;
-        if (localImpl.clear) {
-          localImpl.clear();
-          this.profileObjects = [];
-          this.renameObjects = [];
+      const localImpl = this.$graffiti.graffiti;
+      if (localImpl.clear) {
+        //localImpl.clear();
+        this.profileObjects = [];
+        this.renameObjects = [];
 
-          Object.keys(localStorage).forEach((key) => {
-            if (key.startsWith("chatHistory_")) {
-              localStorage.removeItem(key);
-            }
-          });
-        }
+        Object.keys(localStorage).forEach((key) => {
+          if (key.startsWith("chatHistory_")) {
+            localStorage.removeItem(key);
+          }
+        });
       }
     },
 
@@ -267,6 +261,7 @@ createApp({
       this.privateProfileToShow = null;
       this.profileLoading = false;
     },
+
     async discoverAllPossibleDMs(session) {
       const userId = session.actor;
 
@@ -333,12 +328,10 @@ createApp({
         published: Date.now(),
       };
 
-      // Make sure to include the profile picture URL if it exists
       if (this.profilePictureUrl) {
         updatedPublic.picture = this.profilePictureUrl;
       }
 
-      // If the myProfile already has a picture and we haven't set a new one, keep the old one
       if (!this.profilePictureUrl && this.myProfile && this.myProfile.picture) {
         updatedPublic.picture = this.myProfile.picture;
       }
@@ -371,7 +364,6 @@ createApp({
 
       this.editingProfile = false;
 
-      // After updating the profile, make sure the local myProfile object is updated
       this.myProfile = {
         ...updatedPublic,
       };
@@ -380,7 +372,6 @@ createApp({
         ...updatedPrivate,
       };
 
-      // Force a UI update
       this.$forceUpdate();
 
       await this.loadExistingProfile(session);
@@ -516,7 +507,6 @@ createApp({
       this.editingProfile = !this.editingProfile;
 
       if (this.editingProfile) {
-        // Only load current user's profile data when starting edit
         if (this.myProfile) {
           this.profileName = this.myProfile.name || "";
           this.profilePronouns = this.myProfile.pronouns || "";
@@ -529,11 +519,9 @@ createApp({
             this.profileLocation = "";
           }
         } else {
-          // Reset form if no profile exists yet
           this.resetProfileFormState();
         }
       } else {
-        // When cancelling edit, reset the form
         this.resetProfileFormState();
       }
     },
@@ -620,10 +608,8 @@ createApp({
         return;
       }
 
-      // Use our helper method to find the active group
       let targetGroup = this.getActiveGroupObject();
 
-      // If not found through refs, do a direct discovery
       if (!targetGroup) {
         try {
           await new Promise((resolve, reject) => {
@@ -678,7 +664,6 @@ createApp({
       }
 
       try {
-        // Now we have the group object, we can update it
         await this.$graffiti.patch(
           {
             value: [
@@ -693,19 +678,16 @@ createApp({
           session
         );
 
-        // Create a new copy of the target group with the updated members
         const updatedTargetGroup = JSON.parse(JSON.stringify(targetGroup));
         if (!updatedTargetGroup.value.object.members) {
           updatedTargetGroup.value.object.members = [];
         }
         updatedTargetGroup.value.object.members.push(this.userToAdd.trim());
 
-        // Create a new array with the updated object
         this.activeGroupObjects = this.activeGroupObjects.map((obj) =>
           obj.url === updatedTargetGroup.url ? updatedTargetGroup : obj
         );
 
-        // If it wasn't in the array yet, add it
         if (
           !this.activeGroupObjects.some(
             (obj) => obj.url === updatedTargetGroup.url
@@ -727,7 +709,7 @@ createApp({
           (o) => o.value.object.channel === this.activeChannel
         );
       }
-      // fallback
+
       if (this.$refs.groupChatsDiscover?.objects) {
         return this.$refs.groupChatsDiscover.objects.find(
           (o) => o.value.object.channel === this.activeChannel
@@ -785,7 +767,6 @@ createApp({
       this.chatType = "group";
       this.showPinned = false;
 
-      // Add this explicit update to make sure activeGroupObjects includes this group
       if (
         !this.activeGroupObjects.some(
           (o) => o.value.object.channel === this.activeChannel
@@ -800,7 +781,6 @@ createApp({
         this.saveConversationHistory();
       }
 
-      // Force a check on the condition for showing forms
       console.log(
         "Group object check after joining:",
         this.groupChatObjects.some(
@@ -845,11 +825,10 @@ createApp({
       this.$nextTick(() => {
         const recipientEl = document.querySelector(".chat-recipient");
         if (recipientEl) {
-          recipientEl.classList.remove("bounce-once"); // reset if already there
-          void recipientEl.offsetWidth; // trigger reflow to restart animation
+          recipientEl.classList.remove("bounce-once");
+          void recipientEl.offsetWidth;
           recipientEl.classList.add("bounce-once");
 
-          // optional: remove the class after animation ends
           setTimeout(() => {
             recipientEl.classList.remove("bounce-once");
           }, 600);
@@ -872,10 +851,8 @@ createApp({
       };
 
       if (this.chatType === "direct") {
-        // ——— Your existing DM logic ———
         const dmChannel = [session.actor, this.activeChannel].sort().join("--");
 
-        // 1) create the DM stub
         await this.$graffiti.put(
           {
             value: {
@@ -889,7 +866,6 @@ createApp({
           session
         );
 
-        // 2) actually send the DM
         await this.$graffiti.put(
           {
             value: payload,
@@ -900,7 +876,6 @@ createApp({
           session
         );
 
-        // 3) update your DM sidebar state
         if (!this.dmhis.includes(this.activeChannel)) {
           this.dmhis.push(this.activeChannel);
         }
@@ -910,20 +885,17 @@ createApp({
         };
         this.saveConversationHistory();
       } else {
-        // ——— NEW: group‑chat logic ———
-        // send straight into the group’s channel
         await this.$graffiti.put(
           {
             value: payload,
             channels: [this.activeChannel],
-            // you can omit `allowed` here; group members are implicitly allowed
+
+            allowedOperations: ["replace:/pinned", "replace:/liked"],
           },
           session
         );
-        // no local sidebar state to update – the <graffiti-discover> in your group view will pick it up
       }
 
-      // common cleanup
       this.sending = false;
       this.myMessage = "";
       await this.$nextTick();
@@ -942,11 +914,9 @@ createApp({
       this.activeSender = null;
       this.showPinned = false;
 
-      // FIXED: Always add the recipient to dmhis
       if (!this.dmhis.includes(recipient)) {
         this.dmhis.push(recipient);
 
-        // Initialize with an empty last message if none exists
         if (!this.last[recipient]) {
           this.last[recipient] = {
             content: "New conversation",
@@ -957,10 +927,8 @@ createApp({
         this.saveConversationHistory();
       }
 
-      // Create a DM channel
       const dmChannel = [session.actor, recipient].sort().join("--");
 
-      // Try to discover existing messages
       const alreadyHasMessages = await new Promise((resolve) => {
         this.$graffiti.discover({
           channels: [dmChannel],
@@ -982,7 +950,6 @@ createApp({
 
       if (!alreadyHasMessages) {
         try {
-          // Send a system message to initialize the conversation
           await this.$graffiti.put(
             {
               value: {
@@ -999,7 +966,6 @@ createApp({
             session
           );
 
-          // Update last message for this conversation
           this.last[recipient] = {
             content: `${session.actor} started a conversation.`,
             timestamp: Date.now(),
@@ -1026,21 +992,17 @@ createApp({
       if (!actor) return;
 
       try {
-        // Reset current profile state completely before loading a new profile
         this.currentProfile = null;
         this.privateProfileToShow = null;
 
-        // Clear any editing state if we're switching profiles
         if (this.editingProfile) {
           this.editingProfile = false;
         }
 
-        // Find the public profile in existing objects
         let publicProfile = this.profileObjects.find(
           (obj) => obj.value && obj.value.describes === actor
         );
 
-        // Discover profile data for this actor
         await new Promise((resolve) => {
           const timeout = setTimeout(() => {
             resolve();
@@ -1081,7 +1043,6 @@ createApp({
           });
         });
 
-        // Re-find the profile after discovery
         publicProfile = this.profileObjects.find(
           (obj) => obj.value && obj.value.describes === actor
         );
@@ -1142,7 +1103,6 @@ createApp({
 
         this.showProfilePanel = true;
 
-        // Force an update of the UI
         this.$nextTick(() => {
           this.$forceUpdate();
         });
@@ -1154,7 +1114,6 @@ createApp({
       }
     },
     resetProfileFormState() {
-      // Reset all profile form fields
       this.profileName = "";
       this.profilePronouns = "";
       this.profileAge = "";
@@ -1162,7 +1121,6 @@ createApp({
       this.profileLocation = "";
       this.fileToUpload = null;
 
-      // Clear any file input by resetting its value
       const fileInputs = document.querySelectorAll('input[type="file"]');
       fileInputs.forEach((input) => {
         input.value = "";
@@ -1242,7 +1200,6 @@ createApp({
       this.activeSender = null;
       this.showPinned = false;
 
-      // Reset profile panel and form state when changing conversations
       if (this.showProfilePanel) {
         this.showProfilePanel = false;
         this.currentProfile = null;
@@ -1277,10 +1234,8 @@ createApp({
       const userId = session.actor;
 
       messages.forEach((msg) => {
-        // Extract sender information - could be in value.sender or in actor field
         const sender = msg.value.sender || msg.actor;
 
-        // Skip messages sent by the current user (we only want to track others)
         if (sender && sender !== userId) {
           if (!this.dmhis.includes(sender)) {
             console.log("Adding new conversation with:", sender);
@@ -1288,7 +1243,6 @@ createApp({
             updated = true;
           }
 
-          // Update the last message for this sender
           if (
             !this.last[sender] ||
             msg.value.published > this.last[sender].timestamp
@@ -1301,12 +1255,11 @@ createApp({
           }
         }
 
-        // Also check channels to extract conversation partners
         if (msg.channels) {
           msg.channels.forEach((channel) => {
             if (channel.includes("--")) {
               const [a, b] = channel.split("--");
-              // The other user in the DM channel
+
               const other = a === userId ? b : b === userId ? a : null;
 
               if (other && other !== userId) {
@@ -1318,7 +1271,6 @@ createApp({
                   this.dmhis.push(other);
                   updated = true;
 
-                  // If no last message exists for this partner, create an empty one
                   if (!this.last[other]) {
                     this.last[other] = {
                       content: msg.value.content || "Conversation exists",
@@ -1339,12 +1291,10 @@ createApp({
       }
       messages.forEach((msg) => {
         if (msg.value.pinned && this.activeChannel) {
-          // Make sure pinnedMess for this channel exists
           if (!this.pinnedMess[this.activeChannel]) {
             this.pinnedMess[this.activeChannel] = [];
           }
 
-          // Check if the message is already in pinnedMess
           if (
             !this.pinnedMess[this.activeChannel].some((m) => m.url === msg.url)
           ) {
@@ -1358,10 +1308,8 @@ createApp({
       if (!session) return;
       const userId = session.actor;
 
-      // 1️⃣ Load anything you’ve persisted locally (from logins past)
       this.loadConversationHistory();
 
-      // 2️⃣ Discover every DM‐channel stub in designftw
       this.$graffiti.discover({
         channels: ["designftw"],
         schema: {
@@ -1386,12 +1334,10 @@ createApp({
             const [a, b] = dmChannel.split("--");
             const other = a === userId ? b : a;
 
-            // add to sidebar list
             if (!this.dmhis.includes(other)) {
               this.dmhis.push(other);
             }
 
-            // pull in the latest message
             this.$graffiti.discover({
               channels: [dmChannel],
               schema: {
@@ -1416,7 +1362,6 @@ createApp({
                 };
                 this.saveConversationHistory();
 
-                // 3️⃣ On the very first stub discovered, auto‑open it
                 if (idx === 0) {
                   this.chatType = "direct";
                   this.activeChannel = other;
@@ -1426,7 +1371,6 @@ createApp({
             });
           });
 
-          // If there were any DMs at all, switch you over to the DM tab
           if (stubs.length) {
             this.chatType = "direct";
           }
@@ -1438,38 +1382,46 @@ createApp({
     },
 
     async togglePinMessage(message, session) {
+      const isMine = message.actor === session.actor;
       const newStatus = !message.value.pinned;
 
-      await this.$graffiti.patch(
-        { value: [{ op: "replace", path: "/pinned", value: newStatus }] },
-        message,
-        session
-      );
-
-      message.value.pinned = newStatus;
-
-      // Initialize the pinned messages array for this channel if it doesn't exist
-      if (!this.pinnedMess[this.activeChannel]) {
-        this.pinnedMess[this.activeChannel] = [];
-      }
-
-      if (newStatus) {
-        // Add message to pinned if not already there
-        if (
-          !this.pinnedMess[this.activeChannel].some(
-            (m) => m.url === message.url
-          )
-        ) {
-          this.pinnedMess[this.activeChannel].push({ ...message });
+      if (isMine) {
+        try {
+          await this.$graffiti.patch(
+            { value: [{ op: "replace", path: "/pinned", value: newStatus }] },
+            message,
+            session
+          );
+          message.value.pinned = newStatus;
+        } catch (err) {
+          console.error("Error toggling pin:", err);
+          alert("Unable to pin this message globally.");
+          return;
         }
       } else {
-        // Remove message from pinned
-        this.pinnedMess[this.activeChannel] = this.pinnedMess[
-          this.activeChannel
-        ].filter((m) => m.url !== message.url);
+        message.value.pinned = newStatus;
+      }
+
+      const channel = this.activeChannel;
+      if (!this.pinnedMess[channel]) {
+        this.pinnedMess[channel] = [];
+      }
+      if (newStatus) {
+        if (!this.pinnedMess[channel].some((m) => m.url === message.url)) {
+          this.pinnedMess[channel].push(message);
+        }
+      } else {
+        this.pinnedMess[channel] = this.pinnedMess[channel].filter(
+          (m) => m.url !== message.url
+        );
       }
 
       this.saveConversationHistory();
+      console.log(
+        isMine
+          ? "Global pin toggled"
+          : "Local pin toggled for someone else's message"
+      );
     },
 
     getPinnedCount() {
@@ -1557,10 +1509,8 @@ createApp({
 
           await loadProfile();
 
-          // After loading profile, explicitly load direct messages
           this.loadAllDirectMessages();
         } else if (oldSession) {
-          // Clear the DM discovery timeout when logging out
           if (this.dmDiscoveryTimeout) {
             clearTimeout(this.dmDiscoveryTimeout);
             this.dmDiscoveryTimeout = null;
@@ -1595,7 +1545,6 @@ createApp({
       }
     );
 
-    // Also load direct messages when the component is first mounted if the user is logged in
     if (this.$graffitiSession.value) {
       this.loadAllDirectMessages();
     }
